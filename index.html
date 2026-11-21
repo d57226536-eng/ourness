@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="ru">
 <head>
 <meta charset="UTF-8">
@@ -216,8 +216,7 @@
   </div>
 </div>
 <script>
-  const SUPABASE_URL = 'https://supabase.co';
-  const SUPABASE_KEY = 'sb_publishable_KanbZ43ppyVFXYRb_D-4sQ_wmT_pU7S';
+  const GOOGLE_API = 'https://google.com';
 
   let cardsData = [];
   let activeFilter = 'all';
@@ -226,44 +225,26 @@
   let activeChatUser = '';
   let allMessages = [];
 
-  async function apiRequest(table, method = 'GET', body = null) {
-    try {
-      const headers = {
-        'apikey': SUPABASE_KEY,
-        'Content-Type': 'application/json',
-        'Prefer': 'return=representation'
-      };
-      if (SUPABASE_KEY.startsWith('eyJ')) {
-        headers['Authorization'] = 'Bearer ' + SUPABASE_KEY;
-      }
-      const options = { method: method, headers: headers };
-      if (body) options.body = JSON.stringify(body);
-      const url = method === 'GET' ? `${SUPABASE_URL}/rest/v1/${table}?select=*&order=created_at.desc` : `${SUPABASE_URL}/rest/v1/${table}`;
-      const res = await fetch(url, options);
-      if (!res.ok) {
-        const errText = await res.text();
-        return { error: errText };
-      }
-      return await res.json();
-    } catch (e) {
-      return { error: e.message };
-    }
-  }
-
   async function loadProfilesFromDB() {
-    const data = await apiRequest('profiles', 'GET');
-    if (Array.isArray(data)) {
-      cardsData = data;
-    }
+    try {
+      const res = await fetch(GOOGLE_API + '?type=profiles');
+      const data = await res.json();
+      if (Array.isArray(data)) {
+        cardsData = data;
+      }
+    } catch (e) {}
     renderHome();
     renderNichePage();
   }
 
   async function loadMessagesFromDB() {
-    const data = await apiRequest('messages', 'GET');
-    if (Array.isArray(data)) {
-      allMessages = data.reverse();
-    }
+    try {
+      const res = await fetch(GOOGLE_API + '?type=messages');
+      const data = await res.json();
+      if (Array.isArray(data)) {
+        allMessages = data.reverse();
+      }
+    } catch (e) {}
     renderChat();
   }
 
@@ -290,7 +271,7 @@
     const isMentor = item.role === 'mentor';
     const fullName = item.age ? `${item.name}, ${item.age}` : item.name;
     const avaStyle = item.avatar ? `background-image:url(${item.avatar})` : '';
-    const letter = item.avatar ? '' : (item.name ? item.name.charAt(0).toUpperCase() : '?');
+    const letter = item.avatar ? '' : (item.name ? String(item.name).charAt(0).toUpperCase() : '?');
     return `<div class="card"><div>
       <span class="role-badge ${isMentor ? 'role-mentor' : 'role-mentee'}">${isMentor ? 'Наставник' : 'Ищу наставника'}</span>
       <div class="card-top"><div class="card-ava" style="${avaStyle}">${letter}</div><div><h3>${fullName}</h3><div class="niche">Сфера: ${item.niche}</div></div></div>
@@ -311,7 +292,7 @@
 
   function renderHome() {
     const q = document.getElementById('searchInput').value.toLowerCase();
-    const filtered = cardsData.filter(x => (activeFilter === 'all' || x.role === activeFilter) && (x.name + ' ' + x.niche + ' ' + x.desc).toLowerCase().includes(q));
+    const filtered = cardsData.filter(x => (activeFilter === 'all' || x.role === activeFilter) && (String(x.name) + ' ' + String(x.niche) + ' ' + String(x.desc)).toLowerCase().includes(q));
     document.getElementById('homeCards').innerHTML = filtered.length ? filtered.map(createCardHTML).join('') : emptyBlockHTML('Анкет пока нет');
   }
 
@@ -324,7 +305,7 @@
 
   function renderNichePage() {
     document.getElementById('selectedNicheTitle').innerText = currentNiche;
-    const filtered = currentNiche === 'Все сферы' ? cardsData : cardsData.filter(x => x.niche.toLowerCase().includes(currentNiche.toLowerCase()));
+    const filtered = currentNiche === 'Все сферы' ? cardsData : cardsData.filter(x => String(x.niche).toLowerCase().includes(currentNiche.toLowerCase()));
     document.getElementById('nicheCards').innerHTML = filtered.length ? filtered.map(createCardHTML).join('') : emptyBlockHTML('В этой сфере пока нет анкет');
   }
 
@@ -339,7 +320,7 @@
       document.getElementById('chatMessages').innerHTML = '<div class="msg in">Выберите анкету на главной странице и нажмите «Написать в чат».</div>';
       return;
     }
-    if (!activeChatUser) activeChatUser = partners;
+    if (!activeChatUser) activeChatUser = partners[0];
 
     document.getElementById('chatList').innerHTML = partners.map(u => `<div class="chat-item ${u === activeChatUser ? 'active' : ''}" onclick="activeChatUser='${u}';renderChat()"><span>${u}</span></div>`).join('');
     const dialog = myChats.filter(m => (m.sender === myName && m.receiver === activeChatUser) || (m.sender === activeChatUser && m.receiver === myName));
@@ -353,7 +334,11 @@
     inp.value = '';
     allMessages.push({ sender: myProfile.name, receiver: activeChatUser, text: txt });
     renderChat();
-    await apiRequest('messages', 'POST', { sender: myProfile.name, receiver: activeChatUser, text: txt });
+    await fetch(GOOGLE_API, {
+      method: 'POST',
+      mode: 'no-cors',
+      body: JSON.stringify({ table: 'messages', sender: myProfile.name, receiver: activeChatUser, text: txt })
+    });
   }
 
   function setStatus(st) { myProfile.active = st; document.getElementById('stActive').classList.toggle('active', st); document.getElementById('stPause').classList.toggle('active', !st); }
@@ -367,10 +352,10 @@
       const img = new Image();
       img.onload = function() {
         const canvas = document.createElement('canvas');
-        canvas.width = 180;
-        canvas.height = 180;
-        canvas.getContext('2d').drawImage(img, 0, 0, 180, 180);
-        const compressed = canvas.toDataURL('image/jpeg', 0.7);
+        canvas.width = 140;
+        canvas.height = 140;
+        canvas.getContext('2d').drawImage(img, 0, 0, 140, 140);
+        const compressed = canvas.toDataURL('image/jpeg', 0.6);
         myProfile.avatar = compressed;
         document.getElementById('avatarCircle').style.backgroundImage = `url(${compressed})`;
         document.getElementById('avatarInner').style.display = 'none';
@@ -388,19 +373,22 @@
     if (!myProfile.name || !myProfile.niche || !myProfile.desc) return alert('Заполните имя, сферу и описание!');
 
     const btn = document.getElementById('saveBtn');
-    btn.innerText = 'Сохраняем в облако...';
+    btn.innerText = 'Сохраняем...';
     localStorage.setItem('ourness_p', JSON.stringify(myProfile));
 
     if (myProfile.active) {
-      const res = await apiRequest('profiles', 'POST', { role: myProfile.role, name: myProfile.name, age: myProfile.age, niche: myProfile.niche, desc: myProfile.desc, avatar: myProfile.avatar });
-      if (res && res.error) {
-        alert('Ошибка базы данных: ' + res.error);
-      }
+      await fetch(GOOGLE_API, {
+        method: 'POST',
+        mode: 'no-cors',
+        body: JSON.stringify({ table: 'profiles', role: myProfile.role, name: myProfile.name, age: myProfile.age, niche: myProfile.niche, desc: myProfile.desc, avatar: myProfile.avatar })
+      });
+      cardsData.unshift({ ...myProfile });
     }
     btn.innerText = 'Сохранить';
     openPage('home');
   }
 
+  renderHome();
   loadProfilesFromDB();
 </script>
 </body>
