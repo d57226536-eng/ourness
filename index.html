@@ -215,62 +215,74 @@
   </div>
 </div>
 <script>
-  const GOOGLE_API = 'https://google.com';
+  const GH_USER = 'd57226536-eng';
+  const GH_REPO = 'ourness';
+  const GH_TOKEN = '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';
+  const API_URL = `https://github.com{GH_USER}/${GH_REPO}/contents/data.json`;
 
-  let cardsData = [];
+  let db = { profiles: [], messages: [] };
   let activeFilter = 'all';
   let currentNiche = 'Все сферы';
   let myProfile = JSON.parse(localStorage.getItem('ourness_p')) || { active: true, role: 'mentee', name: '', age: '', niche: '', desc: '', avatar: '' };
   let activeChatUser = '';
-  let allMessages = [];
 
-  function sendToGoogle(paramsObj) {
-    const params = new URLSearchParams(paramsObj);
-    const url = GOOGLE_API + '?' + params.toString() + '&r=' + Date.now();
-    fetch(url, { mode: 'no-cors', keepalive: true }).catch(() => {});
+  function b64Encode(str) {
+    return btoa(unescape(encodeURIComponent(str)));
   }
 
-  function fetchJSONP(type, callbackName) {
-    const old = document.getElementById('jsonp_' + type);
-    if (old) old.remove();
-    const s = document.createElement('script');
-    s.id = 'jsonp_' + type;
-    s.src = `${GOOGLE_API}?action=read&type=${type}&callback=${callbackName}&t=${Date.now()}`;
-    document.body.appendChild(s);
+  function b64Decode(str) {
+    return decodeURIComponent(escape(atob(str.replace(/\s/g, ''))));
   }
 
-  window.onProfilesLoaded = function(data) {
-    if (Array.isArray(data) && data.length > 0) {
-      cardsData = data;
-    }
+  async function loadDB() {
+    try {
+      const res = await fetch(API_URL + '?t=' + Date.now(), {
+        headers: { 'Authorization': 'token ' + GH_TOKEN, 'Accept': 'application/vnd.github.v3+json' }
+      });
+      const file = await res.json();
+      if (file && file.content) {
+        const parsed = JSON.parse(b64Decode(file.content));
+        if (Array.isArray(parsed)) db = { profiles: parsed, messages: [] };
+        else if (parsed && parsed.profiles) db = parsed;
+      }
+    } catch (e) {}
     renderHome();
     renderNichePage();
-  };
+    renderChat();
+  }
 
-  window.onMessagesLoaded = function(data) {
-    if (Array.isArray(data)) {
-      allMessages = data.reverse();
+  async function saveDB(updateFn) {
+    const res = await fetch(API_URL + '?t=' + Date.now(), {
+      headers: { 'Authorization': 'token ' + GH_TOKEN, 'Accept': 'application/vnd.github.v3+json' }
+    });
+    const file = await res.json();
+    let current = { profiles: [], messages: [] };
+    if (file && file.content) {
+      const parsed = JSON.parse(b64Decode(file.content));
+      if (Array.isArray(parsed)) current = { profiles: parsed, messages: [] };
+      else if (parsed && parsed.profiles) current = parsed;
     }
-    renderChat();
-  };
-
-  function loadProfilesFromDB() {
-    renderHome();
-    fetchJSONP('profiles', 'onProfilesLoaded');
+    updateFn(current);
+    db = current;
+    await fetch(API_URL, {
+      method: 'PUT',
+      headers: {
+        'Authorization': 'token ' + GH_TOKEN,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        message: 'update data',
+        content: b64Encode(JSON.stringify(current)),
+        sha: file.sha
+      })
+    });
   }
 
-  function loadMessagesFromDB() {
-    renderChat();
-    fetchJSONP('messages', 'onMessagesLoaded');
-  }
-
-  function openPage(name, skipReload) {
+  function openPage(name) {
     document.getElementById('menu').classList.remove('open');
     document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
     document.getElementById('page-' + name).classList.add('active');
-    if (name === 'home' && !skipReload) loadProfilesFromDB();
-    if (name === 'chat') loadMessagesFromDB();
-    if (name === 'niches') renderNichePage();
+    loadDB();
   }
 
   function startChatWith(userName) {
@@ -308,7 +320,7 @@
 
   function renderHome() {
     const q = document.getElementById('searchInput').value.toLowerCase();
-    const filtered = cardsData.filter(x => (activeFilter === 'all' || x.role === activeFilter) && (String(x.name) + ' ' + String(x.niche) + ' ' + String(x.desc)).toLowerCase().includes(q));
+    const filtered = db.profiles.filter(x => (activeFilter === 'all' || x.role === activeFilter) && (String(x.name) + ' ' + String(x.niche) + ' ' + String(x.desc)).toLowerCase().includes(q));
     document.getElementById('homeCards').innerHTML = filtered.length ? filtered.map(createCardHTML).join('') : emptyBlockHTML('Анкет пока нет');
   }
 
@@ -321,13 +333,13 @@
 
   function renderNichePage() {
     document.getElementById('selectedNicheTitle').innerText = currentNiche;
-    const filtered = currentNiche === 'Все сферы' ? cardsData : cardsData.filter(x => String(x.niche).toLowerCase().includes(currentNiche.toLowerCase()));
+    const filtered = currentNiche === 'Все сферы' ? db.profiles : db.profiles.filter(x => String(x.niche).toLowerCase().includes(currentNiche.toLowerCase()));
     document.getElementById('nicheCards').innerHTML = filtered.length ? filtered.map(createCardHTML).join('') : emptyBlockHTML('В этой сфере пока нет анкет');
   }
 
   function renderChat() {
     const myName = myProfile.name || 'Гость';
-    const myChats = allMessages.filter(m => m.sender === myName || m.receiver === myName);
+    const myChats = db.messages.filter(m => m.sender === myName || m.receiver === myName);
     const partners = [...new Set(myChats.map(m => m.sender === myName ? m.receiver : m.sender))];
     if (activeChatUser && !partners.includes(activeChatUser)) partners.unshift(activeChatUser);
 
@@ -343,14 +355,15 @@
     document.getElementById('chatMessages').innerHTML = dialog.map(m => `<div class="msg ${m.sender === myName ? 'out' : 'in'}">${m.text}</div>`).join('');
   }
 
-  function sendMsg() {
+  async function sendMsg() {
     const inp = document.getElementById('msgInput');
     const txt = inp.value.trim();
     if (!txt || !activeChatUser) return;
     inp.value = '';
-    allMessages.push({ sender: myProfile.name, receiver: activeChatUser, text: txt });
+    const msg = { sender: myProfile.name, receiver: activeChatUser, text: txt };
+    db.messages.push(msg);
     renderChat();
-    sendToGoogle({ action: 'write', type: 'messages', sender: myProfile.name, receiver: activeChatUser, text: txt });
+    await saveDB(c => c.messages.push(msg));
   }
 
   function setStatus(st) { myProfile.active = st; document.getElementById('stActive').classList.toggle('active', st); document.getElementById('stPause').classList.toggle('active', !st); }
@@ -361,39 +374,45 @@
     if (!f) return;
     const reader = new FileReader();
     reader.onload = function(e) {
-      document.getElementById('avatarCircle').style.backgroundImage = `url(${e.target.result})`;
-      document.getElementById('avatarInner').style.display = 'none';
+      const img = new Image();
+      img.onload = function() {
+        const canvas = document.createElement('canvas');
+        canvas.width = 140;
+        canvas.height = 140;
+        canvas.getContext('2d').drawImage(img, 0, 0, 140, 140);
+        const compressed = canvas.toDataURL('image/jpeg', 0.6);
+        myProfile.avatar = compressed;
+        document.getElementById('avatarCircle').style.backgroundImage = `url(${compressed})`;
+        document.getElementById('avatarInner').style.display = 'none';
+      };
+      img.src = e.target.result;
     };
     reader.readAsDataURL(f);
   }
 
-  function saveProfile() {
+  async function saveProfile() {
     myProfile.name = document.getElementById('myName').value.trim();
     myProfile.age = document.getElementById('myAge').value.trim();
     myProfile.niche = document.getElementById('myNiche').value.trim();
     myProfile.desc = document.getElementById('myDesc').value.trim();
     if (!myProfile.name || !myProfile.niche || !myProfile.desc) return alert('Заполните имя, сферу и описание!');
 
+    const btn = document.getElementById('saveBtn');
+    btn.innerText = 'Сохраняем...';
     localStorage.setItem('ourness_p', JSON.stringify(myProfile));
 
     if (myProfile.active) {
-      sendToGoogle({
-        action: 'write',
-        type: 'profiles',
-        role: myProfile.role,
-        name: myProfile.name,
-        age: myProfile.age,
-        niche: myProfile.niche,
-        desc: myProfile.desc
+      await saveDB(c => {
+        c.profiles = c.profiles.filter(x => x.name !== myProfile.name);
+        c.profiles.unshift({ ...myProfile });
       });
-      cardsData.unshift({ ...myProfile });
-      renderHome();
-      renderNichePage();
     }
-    openPage('home', true);
+    btn.innerText = 'Сохранить';
+    openPage('home');
   }
 
-  loadProfilesFromDB();
+  renderHome();
+  loadDB();
 </script>
 </body>
 </html>
