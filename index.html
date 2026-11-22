@@ -226,8 +226,8 @@
 
   function sendToGoogle(paramsObj) {
     const params = new URLSearchParams(paramsObj);
-    const img = new Image();
-    img.src = GOOGLE_API + '?' + params.toString() + '&r=' + Date.now();
+    const url = GOOGLE_API + '?' + params.toString() + '&r=' + Date.now();
+    fetch(url, { mode: 'no-cors', keepalive: true }).catch(() => {});
   }
 
   function fetchJSONP(type, callbackName) {
@@ -240,7 +240,7 @@
   }
 
   window.onProfilesLoaded = function(data) {
-    if (Array.isArray(data)) {
+    if (Array.isArray(data) && data.length > 0) {
       cardsData = data;
     }
     renderHome();
@@ -264,11 +264,11 @@
     fetchJSONP('messages', 'onMessagesLoaded');
   }
 
-  function openPage(name) {
+  function openPage(name, skipReload) {
     document.getElementById('menu').classList.remove('open');
     document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
     document.getElementById('page-' + name).classList.add('active');
-    if (name === 'home') loadProfilesFromDB();
+    if (name === 'home' && !skipReload) loadProfilesFromDB();
     if (name === 'chat') loadMessagesFromDB();
     if (name === 'niches') renderNichePage();
   }
@@ -387,8 +387,10 @@
         desc: myProfile.desc
       });
       cardsData.unshift({ ...myProfile });
+      renderHome();
+      renderNichePage();
     }
-    openPage('home');
+    openPage('home', true);
   }
 
   loadProfilesFromDB();
