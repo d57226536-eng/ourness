@@ -227,7 +227,7 @@
 
   async function loadProfilesFromDB() {
     try {
-      const res = await fetch(GOOGLE_API + '?type=profiles');
+      const res = await fetch(GOOGLE_API + '?action=read&type=profiles&t=' + Date.now());
       const data = await res.json();
       if (Array.isArray(data)) {
         cardsData = data;
@@ -239,7 +239,7 @@
 
   async function loadMessagesFromDB() {
     try {
-      const res = await fetch(GOOGLE_API + '?type=messages');
+      const res = await fetch(GOOGLE_API + '?action=read&type=messages&t=' + Date.now());
       const data = await res.json();
       if (Array.isArray(data)) {
         allMessages = data.reverse();
@@ -334,11 +334,8 @@
     inp.value = '';
     allMessages.push({ sender: myProfile.name, receiver: activeChatUser, text: txt });
     renderChat();
-    await fetch(GOOGLE_API, {
-      method: 'POST',
-      mode: 'no-cors',
-      body: JSON.stringify({ table: 'messages', sender: myProfile.name, receiver: activeChatUser, text: txt })
-    });
+    const params = new URLSearchParams({ action: 'write', type: 'messages', sender: myProfile.name, receiver: activeChatUser, text: txt });
+    await fetch(GOOGLE_API + '?' + params.toString());
   }
 
   function setStatus(st) { myProfile.active = st; document.getElementById('stActive').classList.toggle('active', st); document.getElementById('stPause').classList.toggle('active', !st); }
@@ -349,18 +346,8 @@
     if (!f) return;
     const reader = new FileReader();
     reader.onload = function(e) {
-      const img = new Image();
-      img.onload = function() {
-        const canvas = document.createElement('canvas');
-        canvas.width = 140;
-        canvas.height = 140;
-        canvas.getContext('2d').drawImage(img, 0, 0, 140, 140);
-        const compressed = canvas.toDataURL('image/jpeg', 0.6);
-        myProfile.avatar = compressed;
-        document.getElementById('avatarCircle').style.backgroundImage = `url(${compressed})`;
-        document.getElementById('avatarInner').style.display = 'none';
-      };
-      img.src = e.target.result;
+      document.getElementById('avatarCircle').style.backgroundImage = `url(${e.target.result})`;
+      document.getElementById('avatarInner').style.display = 'none';
     };
     reader.readAsDataURL(f);
   }
@@ -373,22 +360,25 @@
     if (!myProfile.name || !myProfile.niche || !myProfile.desc) return alert('Заполните имя, сферу и описание!');
 
     const btn = document.getElementById('saveBtn');
-    btn.innerText = 'Сохраняем...';
+    btn.innerText = 'Сохраняем в таблицу...';
     localStorage.setItem('ourness_p', JSON.stringify(myProfile));
 
     if (myProfile.active) {
-      await fetch(GOOGLE_API, {
-        method: 'POST',
-        mode: 'no-cors',
-        body: JSON.stringify({ table: 'profiles', role: myProfile.role, name: myProfile.name, age: myProfile.age, niche: myProfile.niche, desc: myProfile.desc, avatar: myProfile.avatar })
+      const params = new URLSearchParams({
+        action: 'write',
+        type: 'profiles',
+        role: myProfile.role,
+        name: myProfile.name,
+        age: myProfile.age,
+        niche: myProfile.niche,
+        desc: myProfile.desc
       });
-      cardsData.unshift({ ...myProfile });
+      await fetch(GOOGLE_API + '?' + params.toString());
     }
     btn.innerText = 'Сохранить';
     openPage('home');
   }
 
-  renderHome();
   loadProfilesFromDB();
 </script>
 </body>
