@@ -320,7 +320,7 @@
       document.getElementById('chatMessages').innerHTML = '<div class="msg in">Выберите анкету на главной странице и нажмите «Написать в чат».</div>';
       return;
     }
-    if (!activeChatUser) activeChatUser = partners[0];
+    if (!activeChatUser) activeChatUser = partners;
 
     document.getElementById('chatList').innerHTML = partners.map(u => `<div class="chat-item ${u === activeChatUser ? 'active' : ''}" onclick="activeChatUser='${u}';renderChat()"><span>${u}</span></div>`).join('');
     const dialog = myChats.filter(m => (m.sender === myName && m.receiver === activeChatUser) || (m.sender === activeChatUser && m.receiver === myName));
@@ -335,7 +335,7 @@
     allMessages.push({ sender: myProfile.name, receiver: activeChatUser, text: txt });
     renderChat();
     const params = new URLSearchParams({ action: 'write', type: 'messages', sender: myProfile.name, receiver: activeChatUser, text: txt });
-    await fetch(GOOGLE_API + '?' + params.toString());
+    await fetch(GOOGLE_API + '?' + params.toString(), { mode: 'no-cors' });
   }
 
   function setStatus(st) { myProfile.active = st; document.getElementById('stActive').classList.toggle('active', st); document.getElementById('stPause').classList.toggle('active', !st); }
@@ -373,7 +373,8 @@
         niche: myProfile.niche,
         desc: myProfile.desc
       });
-      await fetch(GOOGLE_API + '?' + params.toString());
+      await fetch(GOOGLE_API + '?' + params.toString(), { mode: 'no-cors' });
+      cardsData.unshift({ ...myProfile });
     }
     btn.innerText = 'Сохранить';
     openPage('home');
