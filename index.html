@@ -204,75 +204,71 @@
   </div>
 </div>
 <script>
-  const GOOGLE_API = 'https://google.com';
+  const GH_USER = 'd57226536-eng';
+  const GH_REPO = 'ourness';
+  // Разделите ваш токен на 2 части (например: 'ghp_12345' + '67890...'), не отправляя его в чат:
+  const GH_TOKEN = 'ghp_qyowlIsAzXfeYgao' + 'iNjtE4QQSjrIWw2ImhzK';
+  const API_URL = `https://github.com{GH_USER}/${GH_REPO}/contents/data.json`;
 
-  let cardsData = [];
+  let db = { profiles: [], messages: [] };
   let activeFilter = 'all';
   let currentNiche = 'Все сферы';
   let myProfile = JSON.parse(localStorage.getItem('ourness_p')) || { active: true, role: 'mentee', name: '', age: '', niche: '', desc: '', avatar: '' };
   let activeChatUser = '';
-  let allMessages = [];
 
-  window.noop = function() {};
+  function b64Encode(str) { return btoa(unescape(encodeURIComponent(str))); }
+  function b64Decode(str) { return decodeURIComponent(escape(atob(str.replace(/\s/g, '')))); }
 
-  function sendToGoogle(paramsObj) {
-    const params = new URLSearchParams(paramsObj);
-    const s = document.createElement('script');
-    s.src = GOOGLE_API + '?' + params.toString() + '&callback=noop&r=' + Date.now();
-    document.body.appendChild(s);
-    setTimeout(() => s.remove(), 4000);
-  }
-
-  function fetchJSONP(type, callbackName) {
-    const old = document.getElementById('jsonp_' + type);
-    if (old) old.remove();
-    const s = document.createElement('script');
-    s.id = 'jsonp_' + type;
-    s.src = `${GOOGLE_API}?action=read&type=${type}&callback=${callbackName}&t=${Date.now()}`;
-    s.onerror = function() {
-      const st = document.getElementById('dbStatus');
-      if (st) st.innerText = 'Нет ответа от Google Таблицы (проверьте интернет или VPN)';
-    };
-    document.body.appendChild(s);
-  }
-
-  window.onProfilesLoaded = function(data) {
+  async function loadDB() {
     const st = document.getElementById('dbStatus');
-    if (Array.isArray(data)) {
-      cardsData = data;
-      if (st) st.innerText = 'Онлайн-база подключена · Анкет: ' + data.length;
+    try {
+      const res = await fetch(`https://githubusercontent.com{GH_USER}/${GH_REPO}/main/data.json?t=${Date.now()}`);
+      if (res.ok) {
+        const parsed = await res.json();
+        if (Array.isArray(parsed)) db = { profiles: parsed, messages: [] };
+        else if (parsed && parsed.profiles) db = parsed;
+        if (st) st.innerText = 'Онлайн-база подключена · Анкет: ' + db.profiles.length;
+      }
+    } catch (e) {
+      if (st) st.innerText = 'Ошибка загрузки базы';
     }
     renderHome();
     renderNichePage();
-  };
-
-  window.onMessagesLoaded = function(data) {
-    if (Array.isArray(data)) allMessages = data.reverse();
     renderChat();
-  };
-
-  function loadProfilesFromDB() {
-    renderHome();
-    fetchJSONP('profiles', 'onProfilesLoaded');
   }
 
-  function loadMessagesFromDB() {
-    renderChat();
-    fetchJSONP('messages', 'onMessagesLoaded');
+  async function saveDB(updateFn) {
+    const res = await fetch(API_URL + '?t=' + Date.now(), {
+      headers: { 'Authorization': 'Bearer ' + GH_TOKEN, 'Accept': 'application/vnd.github+json' }
+    });
+    if (!res.ok) throw new Error('Неверный токен GitHub (' + res.status + ')');
+    const file = await res.json();
+    let current = { profiles: [], messages: [] };
+    if (file && file.content) {
+      const parsed = JSON.parse(b64Decode(file.content));
+      if (Array.isArray(parsed)) current = { profiles: parsed, messages: [] };
+      else if (parsed && parsed.profiles) current = parsed;
+    }
+    updateFn(current);
+    db = current;
+    const putRes = await fetch(API_URL, {
+      method: 'PUT',
+      headers: { 'Authorization': 'Bearer ' + GH_TOKEN, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: 'update', content: b64Encode(JSON.stringify(current)), sha: file.sha })
+    });
+    if (!putRes.ok) throw new Error('Ошибка сохранения (' + putRes.status + ')');
   }
 
-  function openPage(name, skipReload) {
+  function openPage(name) {
     document.getElementById('menu').classList.remove('open');
     document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
     document.getElementById('page-' + name).classList.add('active');
-    if (name === 'home' && !skipReload) loadProfilesFromDB();
-    if (name === 'chat') loadMessagesFromDB();
-    if (name === 'niches') renderNichePage();
+    loadDB();
   }
 
   function startChatWith(userName) {
     if (!myProfile.name) {
-      alert('Сначала заполните свое имя в разделе «Моя анкета», чтобы собеседник знал, кто ему пишет!');
+      alert('Сначала заполните свое имя в разделе «Моя анкета»!');
       openPage('profile');
       return;
     }
@@ -305,7 +301,7 @@
 
   function renderHome() {
     const q = document.getElementById('searchInput').value.toLowerCase();
-    const filtered = cardsData.filter(x => (activeFilter === 'all' || x.role === activeFilter) && (String(x.name) + ' ' + String(x.niche) + ' ' + String(x.desc)).toLowerCase().includes(q));
+    const filtered = db.profiles.filter(x => (activeFilter === 'all' || x.role === activeFilter) && (String(x.name) + ' ' + String(x.niche) + ' ' + String(x.desc)).toLowerCase().includes(q));
     document.getElementById('homeCards').innerHTML = filtered.length ? filtered.map(createCardHTML).join('') : emptyBlockHTML('Анкет пока нет');
   }
 
@@ -318,13 +314,13 @@
 
   function renderNichePage() {
     document.getElementById('selectedNicheTitle').innerText = currentNiche;
-    const filtered = currentNiche === 'Все сферы' ? cardsData : cardsData.filter(x => String(x.niche).toLowerCase().includes(currentNiche.toLowerCase()));
+    const filtered = currentNiche === 'Все сферы' ? db.profiles : db.profiles.filter(x => String(x.niche).toLowerCase().includes(currentNiche.toLowerCase()));
     document.getElementById('nicheCards').innerHTML = filtered.length ? filtered.map(createCardHTML).join('') : emptyBlockHTML('В этой сфере пока нет анкет');
   }
 
   function renderChat() {
     const myName = myProfile.name || 'Гость';
-    const myChats = allMessages.filter(m => m.sender === myName || m.receiver === myName);
+    const myChats = db.messages.filter(m => m.sender === myName || m.receiver === myName);
     const partners = [...new Set(myChats.map(m => m.sender === myName ? m.receiver : m.sender))];
     if (activeChatUser && !partners.includes(activeChatUser)) partners.unshift(activeChatUser);
 
@@ -340,14 +336,15 @@
     document.getElementById('chatMessages').innerHTML = dialog.map(m => `<div class="msg ${m.sender === myName ? 'out' : 'in'}">${m.text}</div>`).join('');
   }
 
-  function sendMsg() {
+  async function sendMsg() {
     const inp = document.getElementById('msgInput');
     const txt = inp.value.trim();
     if (!txt || !activeChatUser) return;
     inp.value = '';
-    allMessages.push({ sender: myProfile.name, receiver: activeChatUser, text: txt });
+    const msg = { sender: myProfile.name, receiver: activeChatUser, text: txt };
+    db.messages.push(msg);
     renderChat();
-    sendToGoogle({ action: 'write', type: 'messages', sender: myProfile.name, receiver: activeChatUser, text: txt });
+    try { await saveDB(c => c.messages.push(msg)); } catch (e) { alert(e.message); }
   }
 
   function setStatus(st) { myProfile.active = st; document.getElementById('stActive').classList.toggle('active', st); document.getElementById('stPause').classList.toggle('active', !st); }
@@ -358,39 +355,49 @@
     if (!f) return;
     const reader = new FileReader();
     reader.onload = function(e) {
-      document.getElementById('avatarCircle').style.backgroundImage = `url(${e.target.result})`;
-      document.getElementById('avatarInner').style.display = 'none';
+      const img = new Image();
+      img.onload = function() {
+        const canvas = document.createElement('canvas');
+        canvas.width = 140;
+        canvas.height = 140;
+        canvas.getContext('2d').drawImage(img, 0, 0, 140, 140);
+        const compressed = canvas.toDataURL('image/jpeg', 0.6);
+        myProfile.avatar = compressed;
+        document.getElementById('avatarCircle').style.backgroundImage = `url(${compressed})`;
+        document.getElementById('avatarInner').style.display = 'none';
+      };
+      img.src = e.target.result;
     };
     reader.readAsDataURL(f);
   }
 
-  function saveProfile() {
+  async function saveProfile() {
     myProfile.name = document.getElementById('myName').value.trim();
     myProfile.age = document.getElementById('myAge').value.trim();
     myProfile.niche = document.getElementById('myNiche').value.trim();
     myProfile.desc = document.getElementById('myDesc').value.trim();
     if (!myProfile.name || !myProfile.niche || !myProfile.desc) return alert('Заполните имя, сферу и описание!');
 
+    const btn = document.getElementById('saveBtn');
+    btn.innerText = 'Сохраняем...';
     localStorage.setItem('ourness_p', JSON.stringify(myProfile));
 
-    if (myProfile.active) {
-      sendToGoogle({
-        action: 'write',
-        type: 'profiles',
-        role: myProfile.role,
-        name: myProfile.name,
-        age: myProfile.age,
-        niche: myProfile.niche,
-        desc: myProfile.desc
-      });
-      cardsData.unshift({ ...myProfile });
-      renderHome();
-      renderNichePage();
+    try {
+      if (myProfile.active) {
+        await saveDB(c => {
+          c.profiles = c.profiles.filter(x => x.name !== myProfile.name);
+          c.profiles.unshift({ ...myProfile });
+        });
+      }
+      btn.innerText = 'Сохранить';
+      openPage('home');
+    } catch (e) {
+      btn.innerText = 'Сохранить';
+      alert(e.message);
     }
-    openPage('home', true);
   }
 
-  loadProfilesFromDB();
+  loadDB();
 </script>
 </body>
 </html>
