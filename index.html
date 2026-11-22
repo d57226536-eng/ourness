@@ -231,27 +231,38 @@
     img.src = GOOGLE_API + '?' + params.toString() + '&r=' + Date.now();
   }
 
-  async function loadProfilesFromDB() {
-    try {
-      const res = await fetch(GOOGLE_API + '?action=read&type=profiles&t=' + Date.now());
-      const data = await res.json();
-      if (Array.isArray(data)) {
-        cardsData = data;
-      }
-    } catch (e) {}
-    renderHome();
-    renderNichePage();
+  function fetchJSONP(type, callbackName) {
+    const old = document.getElementById('jsonp_' + type);
+    if (old) old.remove();
+    const s = document.createElement('script');
+    s.id = 'jsonp_' + type;
+    s.src = `${GOOGLE_API}?action=read&type=${type}&callback=${callbackName}&t=${Date.now()}`;
+    document.body.appendChild(s);
   }
 
-  async function loadMessagesFromDB() {
-    try {
-      const res = await fetch(GOOGLE_API + '?action=read&type=messages&t=' + Date.now());
-      const data = await res.json();
-      if (Array.isArray(data)) {
-        allMessages = data.reverse();
-      }
-    } catch (e) {}
+  window.onProfilesLoaded = function(data) {
+    if (Array.isArray(data)) {
+      cardsData = data;
+    }
+    renderHome();
+    renderNichePage();
+  };
+
+  window.onMessagesLoaded = function(data) {
+    if (Array.isArray(data)) {
+      allMessages = data.reverse();
+    }
     renderChat();
+  };
+
+  function loadProfilesFromDB() {
+    renderHome();
+    fetchJSONP('profiles', 'onProfilesLoaded');
+  }
+
+  function loadMessagesFromDB() {
+    renderChat();
+    fetchJSONP('messages', 'onMessagesLoaded');
   }
 
   function openPage(name) {
