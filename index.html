@@ -225,6 +225,12 @@
   let activeChatUser = '';
   let allMessages = [];
 
+  function sendToGoogle(paramsObj) {
+    const params = new URLSearchParams(paramsObj);
+    const img = new Image();
+    img.src = GOOGLE_API + '?' + params.toString() + '&r=' + Date.now();
+  }
+
   async function loadProfilesFromDB() {
     try {
       const res = await fetch(GOOGLE_API + '?action=read&type=profiles&t=' + Date.now());
@@ -327,15 +333,14 @@
     document.getElementById('chatMessages').innerHTML = dialog.map(m => `<div class="msg ${m.sender === myName ? 'out' : 'in'}">${m.text}</div>`).join('');
   }
 
-  async function sendMsg() {
+  function sendMsg() {
     const inp = document.getElementById('msgInput');
     const txt = inp.value.trim();
     if (!txt || !activeChatUser) return;
     inp.value = '';
     allMessages.push({ sender: myProfile.name, receiver: activeChatUser, text: txt });
     renderChat();
-    const params = new URLSearchParams({ action: 'write', type: 'messages', sender: myProfile.name, receiver: activeChatUser, text: txt });
-    await fetch(GOOGLE_API + '?' + params.toString(), { mode: 'no-cors' });
+    sendToGoogle({ action: 'write', type: 'messages', sender: myProfile.name, receiver: activeChatUser, text: txt });
   }
 
   function setStatus(st) { myProfile.active = st; document.getElementById('stActive').classList.toggle('active', st); document.getElementById('stPause').classList.toggle('active', !st); }
@@ -352,19 +357,17 @@
     reader.readAsDataURL(f);
   }
 
-  async function saveProfile() {
+  function saveProfile() {
     myProfile.name = document.getElementById('myName').value.trim();
     myProfile.age = document.getElementById('myAge').value.trim();
     myProfile.niche = document.getElementById('myNiche').value.trim();
     myProfile.desc = document.getElementById('myDesc').value.trim();
     if (!myProfile.name || !myProfile.niche || !myProfile.desc) return alert('Заполните имя, сферу и описание!');
 
-    const btn = document.getElementById('saveBtn');
-    btn.innerText = 'Сохраняем в таблицу...';
     localStorage.setItem('ourness_p', JSON.stringify(myProfile));
 
     if (myProfile.active) {
-      const params = new URLSearchParams({
+      sendToGoogle({
         action: 'write',
         type: 'profiles',
         role: myProfile.role,
@@ -373,10 +376,8 @@
         niche: myProfile.niche,
         desc: myProfile.desc
       });
-      await fetch(GOOGLE_API + '?' + params.toString(), { mode: 'no-cors' });
       cardsData.unshift({ ...myProfile });
     }
-    btn.innerText = 'Сохранить';
     openPage('home');
   }
 
